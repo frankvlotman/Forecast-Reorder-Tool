@@ -7,7 +7,7 @@ from PIL import Image
 import tkinter.font as tkFont  # Import the font module
 
 # Define the path for the blank icon
-icon_path = 'C:\\Users\\Frank\\OneDrive - Tower Mint\\Apps for Procurement\\blank.ico'
+icon_path = 'C:\\Users\\Frank\\Desktop\\blank.ico'
 
 # Create a blank (transparent) ICO file if it doesn't exist
 def create_blank_ico(path):
@@ -225,7 +225,7 @@ class ReorderCalculator(tk.Tk):
             ws.append(row_data)
 
         # Save the workbook to the specified path
-        file_path = r"C:\Users\Frank\OneDrive - Tower Mint\Apps for Procurement\Forecast Orders\Reorder_Quantities1.xlsx"
+        file_path = r"C:\Users\Frank\Desktop\Reorder_Quantities1.xlsx"
         wb.save(file_path)
         messagebox.showinfo("Download Complete", f"File has been saved to {file_path}")
 
