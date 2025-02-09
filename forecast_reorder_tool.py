@@ -22,8 +22,16 @@ class ReorderCalculator(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Future Purchase Reorder Quantities")
-        self.geometry("1327x900")  # Adjusted size for better visibility
+        self.geometry("1200x800")  # Adjusted size for better visibility
         self.iconbitmap(icon_path)  # Set the window icon
+        
+        # Set up ttk style for all buttons using the 'clam' theme
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure("TButton", background='#d0e8f1', foreground='black')
+        self.style.map("TButton",
+                       background=[('active', '#87CEFA')],
+                       foreground=[('active', 'black')])
         
         self.create_widgets()
 
@@ -38,7 +46,8 @@ class ReorderCalculator(tk.Tk):
         
         # Replace tk.Entry with ttk.Combobox with adjusted width
         self.starting_month = ttk.Combobox(self, values=[
-            'Jan 2024', 'Feb 2024', 'Mar 2024', 'Apr 2024', 'May 2024', 'Jun 2024', 'Jul 2024', 'Aug 2024', 'Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024'
+            'Jan 2024', 'Feb 2024', 'Mar 2024', 'Apr 2024', 'May 2024', 'Jun 2024',
+            'Jul 2024', 'Aug 2024', 'Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024'
         ], width=12)
         self.starting_month.grid(row=1, column=1, padx=10, pady=10)
         self.starting_month.bind("<Return>", self.focus_next_widget)
@@ -56,15 +65,15 @@ class ReorderCalculator(tk.Tk):
         self.target_months_stock_note = tk.Label(self, text="Input '0' if only need to fulfil Forecast Sales without need for safety stock")
         self.target_months_stock_note.grid(row=3, column=2, padx=10, pady=10, sticky='w')
 
-        self.submit_button = tk.Button(self, text="Enter", command=self.generate_table)
+        self.submit_button = ttk.Button(self, text="Enter", command=self.generate_table)
         self.submit_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
         self.submit_button.bind("<Return>", lambda event: self.generate_table())
 
         # Add buttons for pasting clipboard data for each row
-        self.paste_forecast_button = tk.Button(self, text="Paste Forecast Sales", command=lambda: self.paste_from_clipboard(0))
+        self.paste_forecast_button = ttk.Button(self, text="Paste Forecast Sales", command=lambda: self.paste_from_clipboard(0))
         self.paste_forecast_button.grid(row=4, column=2, columnspan=2, padx=10, pady=10)
         
-        self.paste_order_button = tk.Button(self, text="Paste On Order Qty", command=lambda: self.paste_from_clipboard(1))
+        self.paste_order_button = ttk.Button(self, text="Paste On Order Qty", command=lambda: self.paste_from_clipboard(1))
         self.paste_order_button.grid(row=4, column=4, columnspan=2, padx=10, pady=10)
 
     def generate_table(self, event=None):
@@ -104,11 +113,11 @@ class ReorderCalculator(tk.Tk):
         self.entries[2][0].insert(0, opening_stock)
         self.entries[2][0].configure(state='readonly')
 
-        self.calculate_button = tk.Button(self, text="Calculate Results", command=self.calculate_closing_stock)
+        self.calculate_button = ttk.Button(self, text="Calculate Results", command=self.calculate_closing_stock)
         self.calculate_button.grid(row=6+months_ahead, column=0, columnspan=2, padx=10, pady=10)
         self.calculate_button.bind("<Return>", lambda event: self.calculate_closing_stock())
         
-        self.download_button = tk.Button(self, text="Download as XLSX", command=self.download_to_xlsx)
+        self.download_button = ttk.Button(self, text="Download as XLSX", command=self.download_to_xlsx)
         self.download_button.grid(row=6+months_ahead, column=2, columnspan=2, padx=10, pady=10)
         self.download_button.bind("<Return>", lambda event: self.download_to_xlsx())
 
@@ -156,7 +165,7 @@ class ReorderCalculator(tk.Tk):
         self.additional_explanatory_label.grid(row=9+months_ahead, column=0, columnspan=5, padx=10, pady=10, sticky='w')
 
         # Add the Copy button next to the explanatory text
-        self.copy_button = tk.Button(self, text="Copy Explanation", command=self.copy_explanatory_text)
+        self.copy_button = ttk.Button(self, text="Copy Explanation", command=self.copy_explanatory_text)
         self.copy_button.grid(row=9+months_ahead, column=5, padx=10, pady=10, sticky='w')
 
     def copy_explanatory_text(self):
