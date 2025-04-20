@@ -4,269 +4,393 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import openpyxl
 from PIL import Image
-import tkinter.font as tkFont  # Import the font module
+import tkinter.font as tkFont
 
-# Define the path for the blank icon
-icon_path = 'C:\\Users\\Frank\\Desktop\\blank.ico'
+# --- Tooltip helper ---
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        widget.bind("<Enter>", self.showtip)
+        widget.bind("<Leave>", self.hidetip)
 
-# Create a blank (transparent) ICO file if it doesn't exist
+    def showtip(self, event):
+        if self.tipwindow or not self.text:
+            return
+        x = event.x_root + 20
+        y = event.y_root + 10
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            tw,
+            text=self.text,
+            background="#ffffe0",
+            relief="solid",
+            borderwidth=1,
+            font=("Segoe UI", "8", "normal")
+        )
+        label.pack(ipadx=1)
+
+    def hidetip(self, event):
+        if self.tipwindow:
+            self.tipwindow.destroy()
+            self.tipwindow = None
+
+# --- Create blank .ico if missing ---
 def create_blank_ico(path):
-    size = (16, 16)  # Size of the icon
-    image = Image.new("RGBA", size, (255, 255, 255, 0))  # Transparent image
-    image.save(path, format="ICO")
+    size = (16, 16)
+    img = Image.new("RGBA", size, (255, 255, 255, 0))
+    img.save(path, format="ICO")
 
-# Create the blank ICO file
-create_blank_ico(icon_path)
+ICON_PATH = r"C:\Users\Frank\Desktop\blank.ico"
+create_blank_ico(ICON_PATH)
 
 class ReorderCalculator(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Future Purchase Reorder Quantities")
-        self.geometry("1200x800")  # Adjusted size for better visibility
-        self.iconbitmap(icon_path)  # Set the window icon
-        
-        # Set up ttk style for all buttons using the 'clam' theme
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        self.style.configure("TButton", background='#d0e8f1', foreground='black')
-        self.style.map("TButton",
-                       background=[('active', '#87CEFA')],
-                       foreground=[('active', 'black')])
-        
-        self.create_widgets()
+        self.geometry("1000x700")
+        self.iconbitmap(ICON_PATH)
 
-    def create_widgets(self):
-        # Input fields for number of months and starting month
-        tk.Label(self, text="Number of months ahead:").grid(row=0, column=0, padx=10, pady=10)
-        self.months_ahead = tk.Entry(self, width=10)
-        self.months_ahead.grid(row=0, column=1, padx=10, pady=10)
-        self.months_ahead.bind("<Return>", self.focus_next_widget)
-
-        tk.Label(self, text="Starting month (e.g., Jan 2024):").grid(row=1, column=0, padx=10, pady=10)
-        
-        # Replace tk.Entry with ttk.Combobox with adjusted width
-        self.starting_month = ttk.Combobox(self, values=[
-            'Jan 2024', 'Feb 2024', 'Mar 2024', 'Apr 2024', 'May 2024', 'Jun 2024',
-            'Jul 2024', 'Aug 2024', 'Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024'
-        ], width=12)
-        self.starting_month.grid(row=1, column=1, padx=10, pady=10)
-        self.starting_month.bind("<Return>", self.focus_next_widget)
-
-        tk.Label(self, text="Opening Stock Balance:").grid(row=2, column=0, padx=10, pady=10)
-        self.opening_stock = tk.Entry(self, width=10)
-        self.opening_stock.grid(row=2, column=1, padx=10, pady=10)
-        self.opening_stock.bind("<Return>", self.focus_next_widget)
-
-        tk.Label(self, text="Target Months Stock Holding:").grid(row=3, column=0, padx=10, pady=10)
-        self.target_months_stock = tk.Entry(self, width=10)
-        self.target_months_stock.grid(row=3, column=1, padx=10, pady=10)
-        self.target_months_stock.bind("<Return>", self.focus_next_widget)
-
-        self.target_months_stock_note = tk.Label(self, text="Input '0' if only need to fulfil Forecast Sales without need for safety stock")
-        self.target_months_stock_note.grid(row=3, column=2, padx=10, pady=10, sticky='w')
-
-        self.submit_button = ttk.Button(self, text="Enter", command=self.generate_table)
-        self.submit_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
-        self.submit_button.bind("<Return>", lambda event: self.generate_table())
-
-        # Add buttons for pasting clipboard data for each row
-        self.paste_forecast_button = ttk.Button(self, text="Paste Forecast Sales", command=lambda: self.paste_from_clipboard(0))
-        self.paste_forecast_button.grid(row=4, column=2, columnspan=2, padx=10, pady=10)
-        
-        self.paste_order_button = ttk.Button(self, text="Paste On Order Qty", command=lambda: self.paste_from_clipboard(1))
-        self.paste_order_button.grid(row=4, column=4, columnspan=2, padx=10, pady=10)
-
-    def generate_table(self, event=None):
-        months_ahead = int(self.months_ahead.get())
-        starting_month = self.starting_month.get()
-        opening_stock = int(self.opening_stock.get())
-        
-        start_date = datetime.strptime(starting_month, "%b %Y")
-        
-        # Create a frame for the inputs and labels
-        self.input_frame = ttk.Frame(self)
-        self.input_frame.grid(row=5, column=0, columnspan=6, padx=10, pady=10, sticky='nsew')
-
-        self.month_names = []
-
-        # Create column headers for months
-        for i in range(months_ahead):
-            month = (start_date + relativedelta(months=i)).strftime("%b %Y")
-            self.month_names.append(month)
-            tk.Label(self.input_frame, text=month).grid(row=0, column=i+1, padx=5, pady=5)
-
-        # Row headers for input types
-        input_labels = ["Forecast Sales", "On Order Qty", "Opening Stock Balance"]
-        for row, label in enumerate(input_labels, start=1):
-            tk.Label(self.input_frame, text=label).grid(row=row, column=0, padx=5, pady=5, sticky='e')
-
-        # Populate the table with input fields
-        self.entries = [[None for _ in range(months_ahead)] for _ in range(3)]
-        for row in range(3):
-            for col in range(months_ahead):
-                entry = tk.Entry(self.input_frame, width=8)
-                entry.grid(row=row+1, column=col+1, padx=5, pady=5)
-                entry.bind("<Return>", self.focus_next_widget)
-                self.entries[row][col] = entry
-        
-        # Prepopulate the opening stock balance for the first month
-        self.entries[2][0].insert(0, opening_stock)
-        self.entries[2][0].configure(state='readonly')
-
-        self.calculate_button = ttk.Button(self, text="Calculate Results", command=self.calculate_closing_stock)
-        self.calculate_button.grid(row=6+months_ahead, column=0, columnspan=2, padx=10, pady=10)
-        self.calculate_button.bind("<Return>", lambda event: self.calculate_closing_stock())
-        
-        self.download_button = ttk.Button(self, text="Download as XLSX", command=self.download_to_xlsx)
-        self.download_button.grid(row=6+months_ahead, column=2, columnspan=2, padx=10, pady=10)
-        self.download_button.bind("<Return>", lambda event: self.download_to_xlsx())
-
-        # Create a frame for the output table
-        self.output_frame = ttk.Frame(self)
-        self.output_frame.grid(row=7+months_ahead, column=0, columnspan=6, padx=10, pady=10, sticky='nsew')
-
-        # Create the TreeView for the output table with alternating row colors
+        # Modern styling
         style = ttk.Style()
-        style.configure("Treeview.Heading", background="light blue", font=('Helvetica', 10, 'bold'))
+        style.theme_use('clam')
+        style.configure('TLabel', font=('Segoe UI', 10), padding=5)
+        style.configure('TButton', font=('Segoe UI', 10), padding=5)
+        style.configure('TEntry', font=('Segoe UI', 10))
+        style.map('TButton', background=[('active', '#87CEFA')])
 
-        columns = ['Parameter'] + self.month_names
-        self.tree = ttk.Treeview(self.output_frame, columns=columns, show='headings')
-        for col in columns:
-            self.tree.heading(col, text=col, anchor='center')
-            self.tree.column(col, anchor='center', width=100)
-        
-        self.tree.tag_configure('oddrow', background='light grey')
+        # Layout
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(3, weight=1)
+
+        # Build sections
+        self.create_header()
+        self.create_input_frame()
+        self.create_button_frame()
+
+        # Placeholders
+        self.data_frame = None
+        self.output_frame = None
+
+    def create_header(self):
+        hdr = ttk.Label(
+            self,
+            text="Reorder Quantity Calculator",
+            font=("Segoe UI", 16, "bold")
+        )
+        hdr.grid(row=0, column=0, pady=(10, 0))
+
+    def create_input_frame(self):
+        f = ttk.LabelFrame(self, text="Input Parameters", padding=10)
+        f.grid(row=1, column=0, sticky='ew', padx=20, pady=10)
+        for c in range(4):
+            f.columnconfigure(c, weight=1)
+
+        # Months Ahead
+        ttk.Label(f, text="Months Ahead:").grid(row=0, column=0, sticky='e')
+        self.months_ahead = ttk.Entry(f, width=12)
+        self.months_ahead.grid(row=0, column=1, sticky='w')
+        self.months_ahead.bind("<Return>", self.focus_next_widget)
+        ToolTip(self.months_ahead, "How many months into the future to forecast.")
+
+        # Starting Month
+        ttk.Label(f, text="Starting Month:").grid(row=0, column=2, sticky='e')
+        self.starting_month = ttk.Combobox(
+            f,
+            values=[f"{m} 2024" for m in
+                    ['Jan','Feb','Mar','Apr','May','Jun',
+                     'Jul','Aug','Sep','Oct','Nov','Dec']],
+            width=12
+        )
+        self.starting_month.grid(row=0, column=3, sticky='w')
+        self.starting_month.bind("<Return>", self.focus_next_widget)
+        ToolTip(self.starting_month, "Select the first month for your forecast.")
+
+        # Opening Stock
+        ttk.Label(f, text="Opening Stock:").grid(row=1, column=0, sticky='e')
+        self.opening_stock = ttk.Entry(f, width=12)
+        self.opening_stock.grid(row=1, column=1, sticky='w')
+        self.opening_stock.bind("<Return>", self.focus_next_widget)
+        ToolTip(self.opening_stock, "Current on-hand inventory at the start.")
+
+        # Target Months Stock
+        ttk.Label(f, text="Target Months Stock:").grid(row=1, column=2, sticky='e')
+        self.target_months_stock = ttk.Entry(f, width=12)
+        self.target_months_stock.grid(row=1, column=3, sticky='w')
+        self.target_months_stock.bind("<Return>", self.focus_next_widget)
+        ToolTip(
+            self.target_months_stock,
+            "Number of months of forecast sales to hold as safety stock."
+        )
+
+    def create_button_frame(self):
+        f = ttk.Frame(self)
+        f.grid(row=2, column=0, pady=10)
+        f.columnconfigure((0, 1, 2), weight=1)
+
+        ttk.Button(f, text="Generate Table", command=self.generate_table).grid(row=0, column=0, padx=5)
+        ttk.Button(f, text="Paste Forecast", command=lambda: self.paste_from_clipboard(0)).grid(row=0, column=1, padx=5)
+        ttk.Button(f, text="Paste Qty to Order", command=lambda: self.paste_from_clipboard(1)).grid(row=0, column=2, padx=5)
+
+    def generate_table(self):
+        # Validate
+        try:
+            months = int(self.months_ahead.get())
+            start = datetime.strptime(self.starting_month.get(), "%b %Y")
+            opening = int(self.opening_stock.get())
+            self.target_mths = float(self.target_months_stock.get())
+        except Exception:
+            messagebox.showerror("Input Error", "Please check your inputs.")
+            return
+
+        # Month labels
+        self.month_names = [
+            (start + relativedelta(months=i)).strftime("%b %Y")
+            for i in range(months)
+        ]
+
+        # Cleanup old frames
+        if self.data_frame:
+            self.data_frame.destroy()
+        if self.output_frame:
+            self.output_frame.destroy()
+
+        # Input grid
+        self.data_frame = ttk.Frame(self)
+        self.data_frame.grid(row=3, column=0, sticky='nsew', padx=20)
+
+        ttk.Label(self.data_frame, text="Parameter").grid(row=0, column=0, padx=5)
+        for c, m in enumerate(self.month_names, start=1):
+            ttk.Label(self.data_frame, text=m).grid(row=0, column=c, padx=5)
+
+        labels = ["Forecast Sales", "Qty to Order", "Opening Stock Balance"]
+        self.entries = []
+        for r, txt in enumerate(labels, start=1):
+            ttk.Label(self.data_frame, text=txt).grid(row=r, column=0, sticky='e', padx=5, pady=2)
+            row_e = []
+            for c in range(months):
+                e = ttk.Entry(self.data_frame, width=10)
+                e.grid(row=r, column=c+1, padx=2, pady=2)
+                e.bind("<Return>", self.focus_next_widget)
+                row_e.append(e)
+            self.entries.append(row_e)
+
+        # Prefill opening
+        self.entries[2][0].insert(0, opening)
+        self.entries[2][0].state(['readonly'])
+
+        # Control buttons
+        ctrl = ttk.Frame(self)
+        ctrl.grid(row=4, column=0, pady=10)
+        ttk.Button(ctrl, text="Calculate Results", command=self.calculate_closing_stock).grid(row=0, column=0, padx=5)
+        ttk.Button(ctrl, text="Download XLSX", command=self.download_to_xlsx).grid(row=0, column=1, padx=5)
+        ttk.Button(ctrl, text="Scenario Analysis", command=self.open_scenario_window).grid(row=0, column=2, padx=5)
+
+        # Output grid
+        self.setup_output_table()
+
+    def setup_output_table(self):
+        self.output_frame = ttk.Frame(self)
+        self.output_frame.grid(row=5, column=0, padx=20, pady=10, sticky='nsew')
+
+        cols = ['Parameter'] + self.month_names
+        self.tree = ttk.Treeview(self.output_frame, columns=cols, show='headings')
+        style = ttk.Style()
+        style.configure("Treeview.Heading", background="light blue")
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=100, anchor='center')
+
+        params = [
+            "Forecast Sales","Qty to Order","Opening Stock Balance",
+            "Closing Stock Balance","Months Stock","Target Months Stock",
+            "Suggest Qty to Order"
+        ]
+        tags = ['evenrow','oddrow']
+        for i, p in enumerate(params):
+            vals = [p] + (['0'] if p=="Opening Stock Balance" else [""]*len(self.month_names))
+            self.tree.insert('', 'end', values=vals, tags=(tags[i%2],))
+
         self.tree.tag_configure('evenrow', background='white')
-        
+        self.tree.tag_configure('oddrow', background='light grey')
+
+        sb = ttk.Scrollbar(self.output_frame, orient='vertical', command=self.tree.yview)
+        self.tree.configure(yscroll=sb.set)
         self.tree.grid(row=0, column=0, sticky='nsew')
+        sb.grid(row=0, column=1, sticky='ns')
 
-        self.scrollbar = ttk.Scrollbar(self.output_frame, orient='vertical', command=self.tree.yview)
-        self.tree.configure(yscroll=self.scrollbar.set)
-        self.scrollbar.grid(row=0, column=1, sticky='ns')
-
-        # Insert the initial rows for the output table with tags for alternating colors
-        parameters = ["Forecast Sales", "On Order Qty", "Opening Stock Bal", "Closing Stock Bal", "Months Stock", "Target Months Stock ", "Suggest Qty to Order"]
-        for i, param in enumerate(parameters):
-            values = [param] + (["0"] if param == "Opening Stock Balance" else [""] * months_ahead)
-            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-            self.tree.insert("", "end", values=values, tags=(tag,))
-
-        # Autofit columns to the content
         self.autofit_columns()
 
-        # Add the explanatory text and Copy button at the bottom center
-        explanatory_text = (
-            "Opening Stock Bal = The previous months Closing Stock Bal\n"
-            "Closing Stock Bal = Opening Stock - Forecast Sales + On Order Qty\n"
-            "Months Stock = Closing Stock Bal / Forecast Sales\n"
-            "Suggested Qty to Order = MAX(0, (Target Months Stock - Months Stock) * Forecast Sales)"
-        )
-        self.additional_explanatory_label = tk.Label(self, text=explanatory_text, justify='left')
-        self.additional_explanatory_label.grid(row=9+months_ahead, column=0, columnspan=5, padx=10, pady=10, sticky='w')
+    def calculate_closing_stock(self):
+        opening = int(self.opening_stock.get())
+        curr = opening
+        rows = self.tree.get_children()
+        for i, m in enumerate(self.month_names):
+            f = int(self.entries[0][i].get() or 0)
+            o = int(self.entries[1][i].get() or 0)
+            close = curr - f + o
+            ms = round(close / f, 3) if f else 0
+            sugg = round((self.target_mths - ms) * f)
 
-        # Add the Copy button next to the explanatory text
-        self.copy_button = ttk.Button(self, text="Copy Explanation", command=self.copy_explanatory_text)
-        self.copy_button.grid(row=9+months_ahead, column=5, padx=10, pady=10, sticky='w')
+            self.tree.set(rows[0], m, f)
+            self.tree.set(rows[1], m, o)
+            # Opening Stock Balance column retains its first value
+            self.tree.set(rows[2], m, opening if i==0 else self.tree.set(rows[2], m))
+            self.tree.set(rows[3], m, close)
+            self.tree.set(rows[4], m, f"{ms:.3f}")
+            self.tree.set(rows[5], m, str(self.target_mths))
+            self.tree.set(rows[6], m, sugg)
 
-    def copy_explanatory_text(self):
-        explanatory_text = (
-            "Opening Stock Bal = The previous months Closing Stock Bal\n"
-            "Closing Stock Bal = Opening Stock - Forecast Sales + On Order Qty\n"
-            "Months Stock = Closing Stock Bal / Forecast Sales\n"
-            "Suggested Qty to Order = MAX(0, (Target Months Stock - Months Stock) * Forecast Sales)"
-        )
-        self.clipboard_clear()
-        self.clipboard_append(explanatory_text)
-        self.update()  # Needed to ensure the clipboard is updated immediately
-        messagebox.showinfo("Copied", "Explanatory text copied to clipboard!")
+            curr = close
 
-    def calculate_closing_stock(self, event=None):
-        opening_stock = int(self.opening_stock.get())
-        target_months_stock = float(self.target_months_stock.get())
-        current_stock = opening_stock
+    def open_scenario_window(self):
+        opening   = int(self.opening_stock.get())
+        target    = self.target_mths
+        months    = self.month_names
+        forecasts = [int(e.get() or 0) for e in self.entries[0]]
+        on_orders = [int(e.get() or 0) for e in self.entries[1]]
 
-        for col in range(len(self.month_names)):
-            forecast = int(self.entries[0][col].get() or 0)
-            supplier_qty = int(self.entries[1][col].get() or 0)
-            closing_stock_value = current_stock - forecast + supplier_qty
-            current_stock = closing_stock_value
-            months_stock = round(closing_stock_value / forecast, 3) if forecast != 0 else 0  # Updated to 3 decimal places
-            suggested_qty_to_order = max(0, round((target_months_stock - months_stock) * forecast))  # Using round
+        # Scenario calculations
+        scen_on, scen_cl, scen_ms, scen_sugg = [], [], [], []
+        tmp = opening
+        for f in forecasts:
+            req = round((target - ((tmp - f)/f if f else 0)) * f)
+            scen_on.append(req)
+            c = tmp - f + req
+            ms = round(c/f, 3) if f else 0
+            s = round((target - ms) * f)
+            scen_cl.append(c); scen_ms.append(ms); scen_sugg.append(s)
+            tmp = c
+        scen_open = [opening] + scen_cl[:-1]
+        self.scenario_data = {'opening':opening,'target':target,'months':months}
 
-            self.tree.set(self.tree.get_children()[0], column=self.month_names[col], value=str(forecast))
-            self.tree.set(self.tree.get_children()[1], column=self.month_names[col], value=str(supplier_qty))
-            self.tree.set(self.tree.get_children()[2], column=self.month_names[col], value=str(opening_stock if col == 0 else self.entries[2][col].get()))
-            self.tree.set(self.tree.get_children()[3], column=self.month_names[col], value=str(closing_stock_value))
-            self.tree.set(self.tree.get_children()[4], column=self.month_names[col], value=f"{months_stock:.3f}")  # Updated to show 3 decimal places
-            self.tree.set(self.tree.get_children()[5], column=self.month_names[col], value=str(target_months_stock))
-            self.tree.set(self.tree.get_children()[6], column=self.month_names[col], value=str(suggested_qty_to_order))
+        win = tk.Toplevel(self)
+        win.title("Scenario Analysis")
+        rf = ttk.LabelFrame(win, text="Scenario (editable)", padding=10)
+        rf.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
 
-            if col < len(self.entries[2]) - 1:
-                next_opening_stock_entry = self.entries[2][col + 1]
-                next_opening_stock_entry.configure(state='normal')
-                next_opening_stock_entry.delete(0, tk.END)
-                next_opening_stock_entry.insert(0, closing_stock_value)
-                next_opening_stock_entry.configure(state='readonly')
+        cols = ['Parameter'] + months
+        scen_tree = ttk.Treeview(rf, columns=cols, show='headings')
+        for c in cols:
+            scen_tree.heading(c, text=c)
+            scen_tree.column(c, width=80, anchor='center')
+        scen_tree.grid(row=0, column=0, sticky='nsew')
+        sb = ttk.Scrollbar(rf, orient='vertical', command=scen_tree.yview)
+        scen_tree.configure(yscroll=sb.set)
+        sb.grid(row=0, column=1, sticky='ns')
+
+        params = ["Opening Stock","Forecast Sales","Qty to Order",
+                  "Closing Stock","Months Stock","Suggest Qty to Order"]
+        self.scen_items = {}
+        for p in params:
+            if p=="Opening Stock":
+                cv, sv = scen_open, scen_open
+            elif p=="Forecast Sales":
+                cv, sv = forecasts, forecasts
+            elif p=="Qty to Order":
+                cv, sv = on_orders, scen_on
+            elif p=="Closing Stock":
+                cv, sv = scen_cl, scen_cl
+            elif p=="Months Stock":
+                cv, sv = scen_ms, scen_ms
+            else:
+                cv, sv = scen_sugg, scen_sugg
+            iid = scen_tree.insert('', 'end', values=[p] + [str(x) for x in sv])
+            self.scen_items[p] = iid
+
+        scen_tree.bind('<Double-1>', self._on_scenario_double_click)
+        self.scen_tree = scen_tree
+
+    def _on_scenario_double_click(self, event):
+        tree  = event.widget
+        rowid = tree.identify_row(event.y)
+        if rowid not in (
+            self.scen_items['Forecast Sales'],
+            self.scen_items['Qty to Order']
+        ):
+            return
+        col = tree.identify_column(event.x)
+        idx = int(col.lstrip('#')) - 2
+        if idx < 0 or idx >= len(self.month_names):
+            return
+        col_name = self.month_names[idx]
+        x, y, w, h = tree.bbox(rowid, col)
+        entry = tk.Entry(tree)
+        entry.place(x=x, y=y, width=w, height=h)
+        entry.insert(0, tree.set(rowid, col_name))
+        entry.focus()
+        self._edit_info = (entry, rowid, col_name)
+        entry.bind('<Return>', self._commit_edit)
+        entry.bind('<FocusOut>', self._commit_edit)
+
+    def _commit_edit(self, event):
+        entry, rowid, col = self._edit_info
+        new = entry.get()
+        entry.destroy()
+        self.scen_tree.set(rowid, column=col, value=new)
+        self._update_scenario()
+        self._edit_info = None
+
+    def _update_scenario(self):
+        d      = self.scenario_data
+        months = d['months']; opening = d['opening']; target = d['target']
+        fcasts = [int(self.scen_tree.set(self.scen_items['Forecast Sales'], m) or 0)
+                  for m in months]
+        onords = [int(self.scen_tree.set(self.scen_items['Qty to Order'], m) or 0)
+                  for m in months]
+        curr = opening
+        cl_list, ms_list, sugg_list = [], [], []
+        for f, o in zip(fcasts, onords):
+            c = curr - f + o
+            ms = round(c/f, 3) if f else 0
+            s = round((target-ms)*f)
+            cl_list.append(c); ms_list.append(ms); sugg_list.append(s)
+            curr = c
+        scen_open = [opening] + cl_list[:-1]
+        for i, m in enumerate(months):
+            self.scen_tree.set(self.scen_items['Opening Stock'], m, str(scen_open[i]))
+            self.scen_tree.set(self.scen_items['Closing Stock'], m, str(cl_list[i]))
+            self.scen_tree.set(self.scen_items['Months Stock'], m, f"{ms_list[i]:.3f}")
+            self.scen_tree.set(self.scen_items['Suggest Qty to Order'], m, str(sugg_list[i]))
 
     def autofit_columns(self):
-        for col in self.tree["columns"]:
-            max_width = tkFont.Font().measure(col)  # Using tkFont
-            for item in self.tree.get_children():
-                cell_value = self.tree.set(item, col)
-                cell_width = tkFont.Font().measure(cell_value)
-                if cell_width > max_width:
-                    max_width = cell_width
-            self.tree.column(col, width=max_width + 10)  # Add a little padding
+        font = tkFont.Font()
+        for c in self.tree['columns']:
+            maxw = font.measure(c)
+            for iid in self.tree.get_children():
+                w = font.measure(str(self.tree.set(iid, c)))
+                if w > maxw:
+                    maxw = w
+            self.tree.column(c, width=maxw+10)
 
-    def download_to_xlsx(self, event=None):
-        # Create a new workbook and select the active worksheet
+    def download_to_xlsx(self):
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Reorder Quantities"
-
-        # Write the headers to the worksheet
-        headers = ['Parameter'] + self.month_names
-        ws.append(headers)
-
-        # Write the data from the TreeView to the worksheet
-        for row in self.tree.get_children():
-            row_data = self.tree.item(row)['values']
-            ws.append(row_data)
-
-        # Save the workbook to the specified path
-        file_path = r"C:\Users\Frank\Desktop\Reorder_Quantities1.xlsx"
-        wb.save(file_path)
-        messagebox.showinfo("Download Complete", f"File has been saved to {file_path}")
+        ws = wb.active; ws.title = "Reorder Quantities"
+        ws.append(['Parameter'] + self.month_names)
+        for iid in self.tree.get_children():
+            ws.append(self.tree.item(iid)['values'])
+        path = r"C:\Users\Frank\Desktop\Reorder_Quantities1.xlsx"
+        wb.save(path)
+        messagebox.showinfo("Saved", f"Saved to {path}")
 
     def paste_from_clipboard(self, row):
         try:
-            clipboard_data = self.clipboard_get()
-            values = clipboard_data.strip().split()  # Split by whitespace
-
-            # Debugging: print the clipboard data and values
-            print("Clipboard data:", clipboard_data)
-            print("Parsed values:", values)
-
-            num_months = int(self.months_ahead.get())
-
-            expected_values = num_months  # Only values for the selected row
-            if len(values) != expected_values:
-                messagebox.showerror("Error", f"Clipboard data does not match the expected number of input fields. Expected {expected_values} values, got {len(values)}.")
-                return
-
-            for col in range(num_months):
-                value = values[col]
-                print(f"Inserting {value} into entry {row}, {col}")  # Debugging print
-                self.entries[row][col].delete(0, tk.END)
-                self.entries[row][col].insert(0, value)
-                print(f"Entry {row}, {col} now contains {self.entries[row][col].get()}")  # Additional debugging print
-        except Exception as e:
-            messagebox.showerror("Error", f"An error occurred while pasting data: {e}")
+            vals = self.clipboard_get().strip().split()
+            if len(vals) != len(self.month_names):
+                raise ValueError
+            for i, v in enumerate(vals):
+                e = self.entries[row][i]
+                e.delete(0, 'end')
+                e.insert(0, v)
+        except:
+            messagebox.showerror("Error", "Clipboard data mismatch or error")
 
     def focus_next_widget(self, event):
         event.widget.tk_focusNext().focus()
         return "break"
 
 if __name__ == "__main__":
-    app = ReorderCalculator()
-    app.mainloop()
+    ReorderCalculator().mainloop()
