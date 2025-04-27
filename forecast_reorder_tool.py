@@ -39,13 +39,16 @@ class ToolTip:
             self.tipwindow = None
 
 # --- Create blank .ico if missing ---
+
 def create_blank_ico(path):
     size = (16, 16)
     img = Image.new("RGBA", size, (255, 255, 255, 0))
     img.save(path, format="ICO")
 
-ICON_PATH = r"C:\Users\Frank\Desktop\blank.ico"
+
+ICON_PATH = r"C:\\Users\\Frank\\Desktop\\blank.ico"
 create_blank_ico(ICON_PATH)
+
 
 class ReorderCalculator(tk.Tk):
     def __init__(self):
@@ -74,6 +77,12 @@ class ReorderCalculator(tk.Tk):
         # Placeholders
         self.data_frame = None
         self.output_frame = None
+        # Scenario placeholders
+        self.scenario_data = {}
+        self.scen_tree = None
+        self.scen_items = {}
+
+    # -------------------- UI BUILDERS -------------------- #
 
     def create_header(self):
         hdr = ttk.Label(
@@ -135,6 +144,8 @@ class ReorderCalculator(tk.Tk):
         ttk.Button(f, text="Paste Forecast", command=lambda: self.paste_from_clipboard(0)).grid(row=0, column=1, padx=5)
         ttk.Button(f, text="Paste Qty to Order", command=lambda: self.paste_from_clipboard(1)).grid(row=0, column=2, padx=5)
 
+    # -------------------- MAIN TABLE GENERATION -------------------- #
+
     def generate_table(self):
         # Validate
         try:
@@ -192,6 +203,8 @@ class ReorderCalculator(tk.Tk):
         # Output grid
         self.setup_output_table()
 
+    # -------------------- OUTPUT TABLE -------------------- #
+
     def setup_output_table(self):
         self.output_frame = ttk.Frame(self)
         self.output_frame.grid(row=5, column=0, padx=20, pady=10, sticky='nsew')
@@ -224,6 +237,8 @@ class ReorderCalculator(tk.Tk):
 
         self.autofit_columns()
 
+    # -------------------- CALCULATION LOGIC -------------------- #
+
     def calculate_closing_stock(self):
         opening = int(self.opening_stock.get())
         curr = opening
@@ -245,6 +260,8 @@ class ReorderCalculator(tk.Tk):
             self.tree.set(rows[6], m, sugg)
 
             curr = close
+
+    # -------------------- SCENARIO WINDOW -------------------- #
 
     def open_scenario_window(self):
         opening   = int(self.opening_stock.get())
@@ -269,8 +286,13 @@ class ReorderCalculator(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("Scenario Analysis")
+        win.columnconfigure(0, weight=1)
+        win.rowconfigure(0, weight=1)
+
         rf = ttk.LabelFrame(win, text="Scenario (editable)", padding=10)
         rf.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
+        rf.columnconfigure(0, weight=1)
+        rf.rowconfigure(0, weight=1)
 
         cols = ['Parameter'] + months
         scen_tree = ttk.Treeview(rf, columns=cols, show='headings')
@@ -287,22 +309,29 @@ class ReorderCalculator(tk.Tk):
         self.scen_items = {}
         for p in params:
             if p=="Opening Stock":
-                cv, sv = scen_open, scen_open
+                sv = scen_open
             elif p=="Forecast Sales":
-                cv, sv = forecasts, forecasts
+                sv = forecasts
             elif p=="Qty to Order":
-                cv, sv = on_orders, scen_on
+                sv = scen_on
             elif p=="Closing Stock":
-                cv, sv = scen_cl, scen_cl
+                sv = scen_cl
             elif p=="Months Stock":
-                cv, sv = scen_ms, scen_ms
+                sv = scen_ms
             else:
-                cv, sv = scen_sugg, scen_sugg
+                sv = scen_sugg
             iid = scen_tree.insert('', 'end', values=[p] + [str(x) for x in sv])
             self.scen_items[p] = iid
 
         scen_tree.bind('<Double-1>', self._on_scenario_double_click)
         self.scen_tree = scen_tree
+
+        # ---- Download button for scenario ---- #
+        btn_frame = ttk.Frame(win)
+        btn_frame.grid(row=1, column=0, pady=(0,10))
+        ttk.Button(btn_frame, text="Download XLSX", command=self.download_scenario_xlsx).grid(row=0, column=0)
+
+    # -------------------- SCENARIO EDITING -------------------- #
 
     def _on_scenario_double_click(self, event):
         tree  = event.widget
@@ -356,6 +385,8 @@ class ReorderCalculator(tk.Tk):
             self.scen_tree.set(self.scen_items['Months Stock'], m, f"{ms_list[i]:.3f}")
             self.scen_tree.set(self.scen_items['Suggest Qty to Order'], m, str(sugg_list[i]))
 
+    # -------------------- COLUMN AUTO-FIT -------------------- #
+
     def autofit_columns(self):
         font = tkFont.Font()
         for c in self.tree['columns']:
@@ -366,15 +397,37 @@ class ReorderCalculator(tk.Tk):
                     maxw = w
             self.tree.column(c, width=maxw+10)
 
+    # -------------------- DOWNLOADS -------------------- #
+
     def download_to_xlsx(self):
         wb = openpyxl.Workbook()
         ws = wb.active; ws.title = "Reorder Quantities"
         ws.append(['Parameter'] + self.month_names)
         for iid in self.tree.get_children():
             ws.append(self.tree.item(iid)['values'])
-        path = r"C:\Users\Frank\Desktop\Reorder_Quantities1.xlsx"
+        path = r"C:\\Users\\Frank\\Desktop\\Reorder_Quantities1.xlsx"
         wb.save(path)
         messagebox.showinfo("Saved", f"Saved to {path}")
+
+    def download_scenario_xlsx(self):
+        """Download the current Scenario Analysis table to an XLSX file."""
+        if not self.scen_tree:
+            messagebox.showerror("Error", "Scenario table not available.")
+            return
+        wb = openpyxl.Workbook()
+        ws = wb.active; ws.title = "Scenario Analysis"
+        months = self.scenario_data.get('months', [])
+        ws.append(['Parameter'] + months)
+        for iid in self.scen_tree.get_children():
+            ws.append(self.scen_tree.item(iid)['values'])
+        path = r"C:\\Users\\Frank\\Desktop\\Scenario_Analysis.xlsx"
+        try:
+            wb.save(path)
+            messagebox.showinfo("Saved", f"Saved to {path}")
+        except Exception as e:
+            messagebox.showerror("Save Error", f"Unable to save file:\n{e}")
+
+    # -------------------- CLIPBOARD HELPERS -------------------- #
 
     def paste_from_clipboard(self, row):
         try:
@@ -391,6 +444,7 @@ class ReorderCalculator(tk.Tk):
     def focus_next_widget(self, event):
         event.widget.tk_focusNext().focus()
         return "break"
+
 
 if __name__ == "__main__":
     ReorderCalculator().mainloop()
